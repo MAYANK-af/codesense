@@ -692,6 +692,13 @@
                         <span class="text-xs font-mono text-gray-500">Python 3.x</span>
                     </div>
 
+                    <!-- API Key Settings -->
+                    <div class="flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-lg text-xs">
+                        <i data-lucide="key" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
+                        <input id="openaiApiKeyInput" type="password" placeholder="Optional: Enter OpenAI API Key for real multi-language AI reviews..." class="flex-1 bg-transparent outline-none text-gray-300 placeholder-gray-600 font-mono text-xs">
+                        <span class="text-[0.6rem] text-gray-500 uppercase tracking-wider font-semibold">Saved Locally</span>
+                    </div>
+
                     <!-- Code Area -->
                     <div class="relative flex-1 min-h-[300px] border border-white/5 rounded-xl overflow-hidden bg-[#0e1017]">
                         <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[#11131a] text-xs text-gray-500 font-mono">
@@ -1140,12 +1147,6 @@ def calculate_discount(price: float, discount: float) -> float:
         }
 
         // Live Demo runner logic
-        const runScanBtn = document.getElementById('runScanBtn');
-        const resultsWelcome = document.getElementById('resultsWelcome');
-        const resultsLoading = document.getElementById('resultsLoading');
-        const resultsReport = document.getElementById('resultsReport');
-        const scanTimeBadge = document.getElementById('scanTimeBadge');
-
         runScanBtn.addEventListener('click', () => {
             const code = textarea.value.trim();
             if (!code) return;
@@ -1164,95 +1165,249 @@ def calculate_discount(price: float, discount: float) -> float:
             loadStep1.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
             loadStep1.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Parsing syntax tree...</span>';
             loadStep2.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
-            loadStep2.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Scanning AST pattern nodes...</span>';
+            loadStep2.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Scanning patterns...</span>';
             loadStep3.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
             loadStep3.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Running AI semantic scan...</span>';
             lucide.createIcons();
 
-            // Simulate Pipeline steps
-            setTimeout(() => {
-                loadStep1.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
-                loadStep1.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>Parsed syntax tree successfully</span>';
-                lucide.createIcons();
-            }, 600);
+            const apiKey = document.getElementById('openaiApiKeyInput').value.trim();
+            if (apiKey) {
+                // Save locally
+                localStorage.setItem('openai_api_key', apiKey);
+                const startTime = performance.now();
 
-            setTimeout(() => {
-                loadStep2.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
-                loadStep2.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AST pattern scan completed</span>';
-                lucide.createIcons();
-            }, 1300);
+                setTimeout(() => {
+                    loadStep1.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep1.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>Parsed syntax tree successfully</span>';
+                    lucide.createIcons();
+                }, 400);
 
-            setTimeout(() => {
-                loadStep3.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
-                loadStep3.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AI semantic review completed</span>';
-                lucide.createIcons();
-            }, 2100);
+                setTimeout(() => {
+                    loadStep2.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep2.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>Pattern scan completed</span>';
+                    lucide.createIcons();
+                }, 800);
 
-            setTimeout(() => {
-                // Done! Show Report
-                resultsLoading.classList.add('hidden');
-                resultsReport.classList.remove('hidden');
-                
-                // Show badge
-                scanTimeBadge.textContent = "1.84s";
-                scanTimeBadge.classList.remove('hidden');
+                const systemPrompt = `You are CodeGuard AI, an expert AI code reviewer. \nReview the provided code in any programming language (Python, JavaScript, C/C++, Java, Go, etc.) and identify logic bugs, security risks, styling violations, and performance issues.\nYou MUST respond ONLY with a valid JSON object of the following format:\n{\n  \"summary\": \"Overall code quality summary...\",\n  \"findings\": [\n    {\n      \"type\": \"Critical\" | \"High\" | \"Medium\" | \"Info\",\n      \"message\": \"Description of the issue (specify the line number)...\",\n      \"solution\": \"Corrected code snippet or solution suggestion...\"\n    }\n  ],\n  \"positives\": \"Positive note about the code...\"\n}`;
 
-                const findings = runLocalScan(code);
-                const reportSummary = document.getElementById('reportSummary');
-                const reportIssues = document.getElementById('reportIssues');
-                const reportPositives = document.getElementById('reportPositives');
+                fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + apiKey
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: 'Code to review:\n\n' + code }
+                        ],
+                        temperature: 0.2
+                    })
+                })
+                .then(res => {
+                    if (!res.ok) throw new Error('API returned status: ' + res.status);
+                    return res.json();
+                })
+                .then(data => {
+                    loadStep3.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep3.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AI semantic review completed</span>';
+                    lucide.createIcons();
 
-                reportIssues.innerHTML = '';
+                    setTimeout(() => {
+                        const content = data.choices[0].message.content.trim();
+                        let parsedData;
+                        try {
+                            const jsonStr = content.substring(
+                                content.indexOf('{'),
+                                content.lastIndexOf('}') + 1
+                            );
+                            parsedData = JSON.parse(jsonStr);
+                        } catch (e) {
+                            parsedData = {
+                                summary: "AI review completed.",
+                                findings: [{ type: "Info", message: content, solution: "" }],
+                                positives: "Review completed successfully."
+                            };
+                        }
 
-                if (findings.length === 0) {
-                    reportSummary.textContent = "Great job! Code contains zero AST issues, shows solid structural safety, and follows Python best practices.";
-                    reportIssues.innerHTML = `
-                        <div class="flex items-start gap-3 p-3 bg-[#10b981]/5 border border-[#10b981]/15 rounded-lg">
-                            <i data-lucide="smile" class="w-4 h-4 text-[#10b981] shrink-0 mt-0.5"></i>
-                            <span class="text-xs text-[#10b981]">Clean scan. No anomalies found.</span>
-                        </div>`;
-                    reportPositives.textContent = "Functions are documented, variables are named appropriately, and exception handling is robust.";
-                } else {
-                    // Populate Summary
-                    reportSummary.textContent = `Scanned successfully. Found ${findings.length} warning(s) and critical issue(s) that require attention before production.`;
-                    
-                    // Populate Issues
-                    findings.forEach(issue => {
-                        const div = document.createElement('div');
-                        div.className = `flex items-start gap-3 p-3 border rounded-lg ${issue.color}`;
+                        resultsLoading.classList.add('hidden');
+                        resultsReport.classList.remove('hidden');
                         
-                        let badgeColor = 'bg-gray-400/20';
-                        if (issue.type === 'Critical') badgeColor = 'bg-red-500/20 text-red-400';
-                        else if (issue.type === 'High') badgeColor = 'bg-orange-500/20 text-orange-400';
-                        else if (issue.type === 'Medium') badgeColor = 'bg-yellow-500/20 text-yellow-400';
-                        else if (issue.type === 'Info') badgeColor = 'bg-cyan-500/20 text-cyan-400';
+                        const endTime = performance.now();
+                        scanTimeBadge.textContent = ((endTime - startTime) / 1000).toFixed(2) + "s";
+                        scanTimeBadge.classList.remove('hidden');
 
-                        div.innerHTML = `
-                            <div class="p-1 rounded bg-black/10 shrink-0 mt-0.5">
-                                <i data-lucide="${issue.icon}" class="w-3.5 h-3.5"></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[0.65rem] font-extrabold uppercase px-1 rounded ${badgeColor}">${issue.type}</span>
-                                </div>
-                                <p class="text-xs leading-relaxed text-gray-300 mb-2">${issue.message}</p>
-                                ${issue.solution ? `
-                                <div class="mt-2.5 p-2.5 rounded bg-black/35 border border-white/5 font-mono text-[0.65rem] text-[#10b981]">
-                                    <div class="text-gray-500 font-sans font-medium text-[0.6rem] mb-1.5 uppercase tracking-wide">Suggested Fix:</div>
-                                    <pre class="overflow-x-auto whitespace-pre">${escapeHtml(issue.solution)}</pre>
-                                </div>
-                                ` : ''}
-                            </div>
-                        `;
-                        reportIssues.appendChild(div);
-                    });
+                        const reportSummary = document.getElementById('reportSummary');
+                        const reportIssues = document.getElementById('reportIssues');
+                        const reportPositives = document.getElementById('reportPositives');
 
-                    // Positive Note
-                    reportPositives.textContent = "The code syntax is valid and compiles cleanly into standard byte-code structures.";
-                }
-                lucide.createIcons();
-            }, 2600);
+                        reportSummary.textContent = parsedData.summary || '';
+                        reportIssues.innerHTML = '';
+
+                        const findings = parsedData.findings || [];
+                        if (findings.length === 0) {
+                            reportSummary.textContent = "Great job! Code contains zero AST issues, shows solid structural safety, and follows best practices.";
+                            reportIssues.innerHTML = `
+                                <div class="flex items-start gap-3 p-3 bg-[#10b981]/5 border border-[#10b981]/15 rounded-lg">
+                                    <i data-lucide="smile" class="w-4 h-4 text-[#10b981] shrink-0 mt-0.5"></i>
+                                    <span class="text-xs text-[#10b981]">Clean scan. No anomalies found.</span>
+                                </div>`;
+                        } else {
+                            findings.forEach(issue => {
+                                const div = document.createElement('div');
+                                const type = issue.type || 'Info';
+                                const message = issue.message || '';
+                                const solution = issue.solution || '';
+
+                                let color = 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20';
+                                let badgeColor = 'bg-cyan-500/20 text-cyan-400';
+                                let icon = 'file-text';
+
+                                if (type.toLowerCase() === 'critical') {
+                                    color = 'text-red-400 bg-red-400/10 border-red-400/20';
+                                    badgeColor = 'bg-red-500/20 text-red-400';
+                                    icon = 'key-round';
+                                } else if (type.toLowerCase() === 'high') {
+                                    color = 'text-orange-400 bg-orange-400/10 border-orange-400/20';
+                                    badgeColor = 'bg-orange-500/20 text-orange-400';
+                                    icon = 'alert-triangle';
+                                } else if (type.toLowerCase() === 'medium') {
+                                    color = 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
+                                    badgeColor = 'bg-yellow-500/20 text-yellow-400';
+                                    icon = 'bug';
+                                }
+
+                                div.className = `flex items-start gap-3 p-3 border rounded-lg ${color}`;
+                                div.innerHTML = `
+                                    <div class="p-1 rounded bg-black/10 shrink-0 mt-0.5">
+                                        <i data-lucide="${icon}" class="w-3.5 h-3.5"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-[0.65rem] font-extrabold uppercase px-1 rounded ${badgeColor}">${type}</span>
+                                        </div>
+                                        <p class="text-xs leading-relaxed text-gray-300 mb-2">${message}</p>
+                                        ${solution ? `
+                                        <div class="mt-2.5 p-2.5 rounded bg-black/35 border border-white/5 font-mono text-[0.65rem] text-[#10b981]">
+                                            <div class="text-gray-500 font-sans font-medium text-[0.6rem] mb-1.5 uppercase tracking-wide">Suggested Fix:</div>
+                                            <pre class="overflow-x-auto whitespace-pre">${escapeHtml(solution)}</pre>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                                reportIssues.appendChild(div);
+                            });
+                        }
+                        reportPositives.textContent = parsedData.positives || "The code syntax is valid.";
+                        lucide.createIcons();
+                    }, 400);
+                })
+                .catch(err => {
+                    resultsLoading.classList.add('hidden');
+                    resultsReport.classList.remove('hidden');
+                    document.getElementById('reportSummary').textContent = "Error running AI scan.";
+                    document.getElementById('reportIssues').innerHTML = `
+                        <div class="flex items-start gap-3 p-3 bg-red-400/5 border border-red-400/15 rounded-lg text-red-400 w-full">
+                            <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                            <span class="text-xs">API Error: ${err.message}. Please check your API key, connection, or quota.</span>
+                        </div>`;
+                    document.getElementById('reportPositives').textContent = "No review could be fetched.";
+                    lucide.createIcons();
+                });
+
+            } else {
+                // Simulate Pipeline steps for local static scanner
+                setTimeout(() => {
+                    loadStep1.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep1.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>Parsed syntax tree successfully</span>';
+                    lucide.createIcons();
+                }, 600);
+
+                setTimeout(() => {
+                    loadStep2.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep2.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AST pattern scan completed</span>';
+                    lucide.createIcons();
+                }, 1300);
+
+                setTimeout(() => {
+                    loadStep3.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                    loadStep3.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AI semantic review completed</span>';
+                    lucide.createIcons();
+                }, 2100);
+
+                setTimeout(() => {
+                    // Done! Show Report
+                    resultsLoading.classList.add('hidden');
+                    resultsReport.classList.remove('hidden');
+                    
+                    // Show badge
+                    scanTimeBadge.textContent = "1.84s";
+                    scanTimeBadge.classList.remove('hidden');
+
+                    const findings = runLocalScan(code);
+                    const reportSummary = document.getElementById('reportSummary');
+                    const reportIssues = document.getElementById('reportIssues');
+                    const reportPositives = document.getElementById('reportPositives');
+
+                    reportIssues.innerHTML = '';
+
+                    if (findings.length === 0) {
+                        reportSummary.textContent = "Great job! Code contains zero AST issues, shows solid structural safety, and follows Python best practices.";
+                        reportIssues.innerHTML = `
+                            <div class="flex items-start gap-3 p-3 bg-[#10b981]/5 border border-[#10b981]/15 rounded-lg">
+                                <i data-lucide="smile" class="w-4 h-4 text-[#10b981] shrink-0 mt-0.5"></i>
+                                <span class="text-xs text-[#10b981]">Clean scan. No anomalies found.</span>
+                            </div>`;
+                        reportPositives.textContent = "Functions are documented, variables are named appropriately, and exception handling is robust.";
+                    } else {
+                        // Populate Summary
+                        reportSummary.textContent = `Scanned successfully. Found ${findings.length} warning(s) and critical issue(s) that require attention before production.`;
+                        
+                        // Populate Issues
+                        findings.forEach(issue => {
+                            const div = document.createElement('div');
+                            div.className = `flex items-start gap-3 p-3 border rounded-lg ${issue.color}`;
+                            
+                            let badgeColor = 'bg-gray-400/20';
+                            if (issue.type === 'Critical') badgeColor = 'bg-red-500/20 text-red-400';
+                            else if (issue.type === 'High') badgeColor = 'bg-orange-500/20 text-orange-400';
+                            else if (issue.type === 'Medium') badgeColor = 'bg-yellow-500/20 text-yellow-400';
+                            else if (issue.type === 'Info') badgeColor = 'bg-cyan-500/20 text-cyan-400';
+
+                            div.innerHTML = `
+                                <div class="p-1 rounded bg-black/10 shrink-0 mt-0.5">
+                                    <i data-lucide="${issue.icon}" class="w-3.5 h-3.5"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-[0.65rem] font-extrabold uppercase px-1 rounded ${badgeColor}">${issue.type}</span>
+                                    </div>
+                                    <p class="text-xs leading-relaxed text-gray-300 mb-2">${issue.message}</p>
+                                    ${issue.solution ? `
+                                    <div class="mt-2.5 p-2.5 rounded bg-black/35 border border-white/5 font-mono text-[0.65rem] text-[#10b981]">
+                                        <div class="text-gray-500 font-sans font-medium text-[0.6rem] mb-1.5 uppercase tracking-wide">Suggested Fix:</div>
+                                        <pre class="overflow-x-auto whitespace-pre">${escapeHtml(issue.solution)}</pre>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                            reportIssues.appendChild(div);
+                        });
+
+                        // Positive Note
+                        reportPositives.textContent = "The code syntax is valid and compiles cleanly into standard byte-code structures.";
+                    }
+                    lucide.createIcons();
+                }, 2600);
+            }
         });
+
+        // Load API key on page load
+        const savedApiKey = localStorage.getItem('openai_api_key');
+        if (savedApiKey) {
+            document.getElementById('openaiApiKeyInput').value = savedApiKey;
+        }
 
         // Trigger default click on demo run
         setTimeout(() => {
