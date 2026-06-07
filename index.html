@@ -1040,6 +1040,15 @@ def calculate_discount(price: float, discount: float) -> float:
             selectTemplate('clean', this);
         });
 
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         // Live static scanner inside JS!
         function runLocalScan(code) {
             const findings = [];
@@ -1054,6 +1063,7 @@ def calculate_discount(price: float, discount: float) -> float:
                         icon: 'key-round',
                         color: 'text-red-400 bg-red-400/10 border-red-400/20',
                         message: `Potential hardcoded secret or credential literal detected on line ${i+1}. Use environment variables.`,
+                        solution: `import os\napi_key = os.getenv("API_KEY")`
                     });
                 }
             }
@@ -1067,6 +1077,7 @@ def calculate_discount(price: float, discount: float) -> float:
                         icon: 'alert-triangle',
                         color: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
                         message: `Insecure eval() execution detected on line ${i+1}. This permits arbitrary remote code execution.`,
+                        solution: `import ast\nusername_parsed = ast.literal_eval(username)`
                     });
                 }
             }
@@ -1081,6 +1092,7 @@ def calculate_discount(price: float, discount: float) -> float:
                         icon: 'shield-alert',
                         color: 'text-red-400 bg-red-400/10 border-red-400/20',
                         message: `SQL Injection risk on line ${i+1}. Dynamic SQL parameter concatenation via f-string detected. Use parameterized queries.`,
+                        solution: `query = "SELECT * FROM users WHERE id = %s"\nreturn db.execute(query, (user_id,))`
                     });
                 }
             }
@@ -1094,6 +1106,7 @@ def calculate_discount(price: float, discount: float) -> float:
                         icon: 'bug',
                         color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
                         message: `Bare except clause detected on line ${i+1}. Catch specific exception types to prevent masking critical crashes.`,
+                        solution: `try:\n    db.save(username)\nexcept DatabaseError as e:\n    logger.error(f"Failed to save user: {e}")`
                     });
                 }
             }
@@ -1117,6 +1130,7 @@ def calculate_discount(price: float, discount: float) -> float:
                             icon: 'file-text',
                             color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
                             message: `Function \`${funcName}()\` is missing a docstring documentation block.`,
+                            solution: `def ${funcName}(...):\n    """[Write a description of what ${funcName} does here]"""\n    ...`
                         });
                     }
                 }
@@ -1217,11 +1231,17 @@ def calculate_discount(price: float, discount: float) -> float:
                             <div class="p-1 rounded bg-black/10 shrink-0 mt-0.5">
                                 <i data-lucide="${issue.icon}" class="w-3.5 h-3.5"></i>
                             </div>
-                            <div>
+                            <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="text-[0.65rem] font-extrabold uppercase px-1 rounded ${badgeColor}">${issue.type}</span>
                                 </div>
-                                <p class="text-xs leading-relaxed text-gray-300">${issue.message}</p>
+                                <p class="text-xs leading-relaxed text-gray-300 mb-2">${issue.message}</p>
+                                ${issue.solution ? `
+                                <div class="mt-2.5 p-2.5 rounded bg-black/35 border border-white/5 font-mono text-[0.65rem] text-[#10b981]">
+                                    <div class="text-gray-500 font-sans font-medium text-[0.6rem] mb-1.5 uppercase tracking-wide">Suggested Fix:</div>
+                                    <pre class="overflow-x-auto whitespace-pre">${escapeHtml(issue.solution)}</pre>
+                                </div>
+                                ` : ''}
                             </div>
                         `;
                         reportIssues.appendChild(div);

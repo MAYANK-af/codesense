@@ -20,7 +20,8 @@ Format your response as follows:
 
 Rules:
 - Be specific — reference the actual code, not vague generalities
-- Be constructive — suggest how to fix each issue
+- Be constructive — suggest how to fix each issue, and provide a code block showing the corrected secure code
 - Be concise — no issue description longer than 3 sentences
 - If the code looks good overall, say so clearly
 - Never be harsh or discouraging
+
