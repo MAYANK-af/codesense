@@ -693,9 +693,14 @@
                     </div>
 
                     <!-- API Key Settings -->
-                    <div class="flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-lg text-xs">
+                    <div class="flex flex-wrap items-center gap-3 px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-lg text-xs">
                         <i data-lucide="key" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
-                        <input id="openaiApiKeyInput" type="password" placeholder="Optional: Enter OpenAI API Key for real multi-language AI reviews..." class="flex-1 bg-transparent outline-none text-gray-300 placeholder-gray-600 font-mono text-xs">
+                        <select id="apiProviderSelect" class="bg-[#11131a] border border-white/5 text-gray-300 outline-none rounded px-1.5 py-0.5 text-[0.7rem] font-medium cursor-pointer">
+                            <option value="gemini">Google Gemini (Free Key)</option>
+                            <option value="openai">OpenAI (Paid Key)</option>
+                        </select>
+                        <input id="openaiApiKeyInput" type="password" placeholder="Enter Google Gemini API Key for free AI reviews..." class="flex-1 bg-transparent outline-none text-gray-300 placeholder-gray-600 font-mono text-xs min-w-[150px]">
+                        <a id="getFreeKeyLink" href="https://aistudio.google.com/" target="_blank" class="text-[0.65rem] text-[#22d3ee] hover:underline" title="Get free Gemini API Key from Google AI Studio">Get Free Key ↗</a>
                         <button id="clearApiKeyBtn" class="text-gray-500 hover:text-red-400 transition-colors" title="Clear saved API key">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
@@ -1175,6 +1180,7 @@ def calculate_discount(price: float, discount: float) -> float:
             lucide.createIcons();
 
             const apiKey = document.getElementById('openaiApiKeyInput').value.trim();
+            const provider = document.getElementById('apiProviderSelect').value;
             if (apiKey) {
                 // Save locally
                 localStorage.setItem('openai_api_key', apiKey);
@@ -1194,32 +1200,64 @@ def calculate_discount(price: float, discount: float) -> float:
 
                 const systemPrompt = `You are CodeGuard AI, an expert AI code reviewer. \nReview the provided code in any programming language (Python, JavaScript, C/C++, Java, Go, etc.) and identify logic bugs, security risks, styling violations, and performance issues.\nYou MUST respond ONLY with a valid JSON object of the following format:\n{\n  \"summary\": \"Overall code quality summary...\",\n  \"findings\": [\n    {\n      \"type\": \"Critical\" | \"High\" | \"Medium\" | \"Info\",\n      \"message\": \"Description of the issue (specify the line number)...\",\n      \"solution\": \"Corrected code snippet or solution suggestion...\"\n    }\n  ],\n  \"positives\": \"Positive note about the code...\"\n}`;
 
-                fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + apiKey
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-4o-mini',
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'user', content: 'Code to review:\n\n' + code }
-                        ],
-                        temperature: 0.2
+                let apiCall;
+                if (provider === 'gemini') {
+                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+                    apiCall = fetch(geminiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [{
+                                    text: systemPrompt + '\n\nCode to review:\n\n' + code
+                                }]
+                            }],
+                            generationConfig: {
+                                responseMimeType: "application/json"
+                            }
+                        })
                     })
-                })
-                .then(res => {
-                    if (!res.ok) throw new Error('API returned status: ' + res.status);
-                    return res.json();
-                })
-                .then(data => {
+                    .then(res => {
+                        if (!res.ok) throw new Error('Gemini API returned status: ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        return data.candidates[0].content.parts[0].text.trim();
+                    });
+                } else {
+                    apiCall = fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + apiKey
+                        },
+                        body: JSON.stringify({
+                            model: 'gpt-4o-mini',
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: 'Code to review:\n\n' + code }
+                            ],
+                            temperature: 0.2
+                        })
+                    })
+                    .then(res => {
+                        if (!res.ok) throw new Error('OpenAI API returned status: ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        return data.choices[0].message.content.trim();
+                    });
+                }
+
+                apiCall
+                .then(content => {
                     loadStep3.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
                     loadStep3.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AI semantic review completed</span>';
                     lucide.createIcons();
 
                     setTimeout(() => {
-                        const content = data.choices[0].message.content.trim();
                         let parsedData;
                         try {
                             const jsonStr = content.substring(
@@ -1407,11 +1445,36 @@ def calculate_discount(price: float, discount: float) -> float:
             }
         });
 
-        // Load API key on page load
+        // Load settings on page load
+        const savedProvider = localStorage.getItem('api_provider') || 'gemini';
+        document.getElementById('apiProviderSelect').value = savedProvider;
+
         const savedApiKey = localStorage.getItem('openai_api_key');
         if (savedApiKey) {
             document.getElementById('openaiApiKeyInput').value = savedApiKey;
         }
+
+        const providerSelect = document.getElementById('apiProviderSelect');
+        const keyInput = document.getElementById('openaiApiKeyInput');
+        const freeKeyLink = document.getElementById('getFreeKeyLink');
+
+        function updatePlaceholder() {
+            const provider = providerSelect.value;
+            if (provider === 'gemini') {
+                keyInput.placeholder = "Enter Google Gemini API Key for free AI reviews...";
+                freeKeyLink.href = "https://aistudio.google.com/";
+                freeKeyLink.textContent = "Get Free Key ↗";
+            } else {
+                keyInput.placeholder = "Enter OpenAI API Key...";
+                freeKeyLink.href = "https://platform.openai.com/api-keys";
+                freeKeyLink.textContent = "Get OpenAI Key ↗";
+            }
+        }
+        providerSelect.addEventListener('change', () => {
+            localStorage.setItem('api_provider', providerSelect.value);
+            updatePlaceholder();
+        });
+        updatePlaceholder();
 
         // Clear API key handler
         document.getElementById('clearApiKeyBtn').addEventListener('click', () => {
