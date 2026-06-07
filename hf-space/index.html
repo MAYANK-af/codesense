@@ -1202,7 +1202,7 @@ def calculate_discount(price: float, discount: float) -> float:
 
                 let apiCall;
                 if (provider === 'gemini') {
-                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
                     apiCall = fetch(geminiUrl, {
                         method: 'POST',
                         headers: {
