@@ -1,0 +1,24 @@
+name: 'CodeSense AI Code Review Agent'
+description: 'An autonomous AI agent that reviews GitHub Pull Requests and posts detailed code review comments.'
+author: 'Mayank Yadav'
+branding:
+  icon: 'shield'
+  color: 'purple'
+inputs:
+  github-token:
+    description: 'The GitHub personal access token or secrets.GITHUB_TOKEN'
+    required: true
+  openai-api-key:
+    description: 'The OpenAI API Key'
+    required: true
+  github-repo:
+    description: 'The target repository to audit (e.g. owner/repo)'
+    required: false
+    default: ${{ github.repository }}
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  env:
+    GITHUB_TOKEN: ${{ inputs.github-token }}
+    OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+    GITHUB_REPO: ${{ inputs.github-repo }}

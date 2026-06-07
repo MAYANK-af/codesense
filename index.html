@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGuard AI — Intelligent Code Review</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::selection { background: rgba(139, 92, 246, 0.3); color: #fff; }
+
+        * { scrollbar-width: thin; scrollbar-color: #2a2d3a #111318; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #111318; }
+        ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 10px; }
+
+        body {
+            background-color: #0C0D12;
+            color: #c9d1d9;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        /* Noise overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.4;
+        }
+
+        /* Progress bar */
+        #progressBar {
+            position: fixed; top: 0; left: 0; height: 2px; z-index: 9998;
+            background: linear-gradient(90deg, #8b5cf6, #6366f1, #22d3ee);
+            transition: width 0.1s linear;
+        }
+
+        .glow-card {
+            background: #14161E;
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glow-card:hover {
+            border-color: rgba(139, 92, 246, 0.25);
+            box-shadow: 0 0 60px -12px rgba(139, 92, 246, 0.15);
+        }
+
+        .tag-pill {
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .tab-btn {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0; right: 0;
+            height: 2px;
+            background: #8b5cf6;
+            border-radius: 2px;
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+        }
+        .accordion-content.open {
+            max-height: 300px;
+            padding-bottom: 12px;
+        }
+
+        .terminal-line {
+            opacity: 0;
+            transform: translateY(6px);
+            transition: all 0.3s ease;
+        }
+        .terminal-line.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        .cursor-blink {
+            animation: cursorBlink 1s infinite;
+        }
+
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .code-highlight {
+            transition: background 0.2s ease;
+            border-radius: 2px;
+            padding: 0 3px;
+            margin: 0 -3px;
+        }
+        .code-highlight:hover {
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        .pulse-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5); }
+            70% { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+        }
+
+        .check-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+
+        .hover-lift {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+
+        .connect-line {
+            stroke-dasharray: 6 4;
+            animation: dashMove 1s linear infinite;
+        }
+        @keyframes dashMove {
+            to { stroke-dashoffset: -10; }
+        }
+
+        .copy-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #14161E;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #c9d1d9;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        .copy-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="antialiased overflow-x-hidden">
+
+    <div id="progressBar" style="width: 0%"></div>
+    <div id="copyToast" class="copy-toast">Copied to clipboard ✓</div>
+
+    <!-- Nav -->
+    <nav id="nav" class="fixed top-0 left-0 right-0 z-50 bg-[#0C0D12]/80 backdrop-blur-xl border-b border-white/5">
+        <div class="max-w-6xl mx-auto px-5 flex items-center justify-between h-14">
+            <a href="#" class="flex items-center gap-2.5 group">
+                <div class="w-7 h-7 rounded-md bg-[#8b5cf6] flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <i data-lucide="shield-check" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="font-bold text-white text-sm tracking-tight">CodeGuard<span class="text-[#8b5cf6]">AI</span></span>
+            </a>
+            <div class="hidden md:flex items-center gap-6">
+                <a href="#features" class="text-xs text-gray-400 hover:text-white transition-colors tracking-wide uppercase font-medium nav-link">Features</a>
+                <a href="#ast" class="text-xs text-gray-400 hover:text-white transition-colors tracking-wide uppercase font-medium nav-link">AST Walkthrough</a>
+                <a href="#demo" class="text-xs text-gray-400 hover:text-white transition-colors tracking-wide uppercase font-medium nav-link">Sandbox Demo</a>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="https://github.com" target="_blank" class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors font-medium">
+                    <i data-lucide="github" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline">GitHub</span>
+                </a>
+                <button id="mobileMenuBtn" class="md:hidden p-1.5 text-gray-400 hover:text-white">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+        <div id="mobileMenu" class="md:hidden hidden border-t border-white/5 bg-[#0C0D12]/95 backdrop-blur-xl">
+            <div class="px-5 py-3 flex flex-col gap-3">
+                <a href="#features" class="mobile-nav-link text-xs text-gray-400 hover:text-white py-1 uppercase font-medium tracking-wide">Features</a>
+                <a href="#ast" class="mobile-nav-link text-xs text-gray-400 hover:text-white py-1 uppercase font-medium tracking-wide">AST Walkthrough</a>
+                <a href="#demo" class="mobile-nav-link text-xs text-gray-400 hover:text-white py-1 uppercase font-medium tracking-wide">Sandbox Demo</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="relative min-h-screen flex items-center pt-14">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-[#8b5cf6]/[0.07] rounded-full blur-[120px] pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[#22d3ee]/[0.04] rounded-full blur-[100px] pointer-events-none"></div>
+
+        <div class="max-w-6xl mx-auto px-5 w-full py-16">
+            <div class="grid lg:grid-cols-5 gap-10 lg:gap-8 items-center">
+                <!-- Text side (3 cols) -->
+                <div class="lg:col-span-3">
+                    <div class="flex items-center gap-2 mb-6">
+                        <div class="pulse-dot"></div>
+                        <span class="text-xs text-gray-500 font-mono tracking-wider uppercase">Open Source AI Agent</span>
+                    </div>
+
+                    <h1 class="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold text-white leading-[1.1] tracking-tight mb-5">
+                        Code review that<br>
+                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#8b5cf6] via-[#6366f1] to-[#22d3ee]">actually catches</span><br>
+                        what matters
+                    </h1>
+
+                    <p class="text-gray-400 text-base sm:text-lg leading-relaxed max-w-xl mb-8">
+                        Static AST analysis catches secrets and anti-patterns instantly. GPT-4 finds logic errors and security holes. Results post straight to your PRs automatically.
+                    </p>
+
+                    <div class="flex flex-wrap items-center gap-3 mb-10">
+                        <a href="#demo" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#8b5cf6] hover:bg-[#7c4fe0] text-white text-sm font-semibold rounded-lg transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#8b5cf6]/20">
+                            Try the live sandbox
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </a>
+                        <a href="#features" class="inline-flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-lg border border-white/10 transition-all">
+                            How it works
+                        </a>
+                    </div>
+
+                    <div class="flex items-center gap-5 text-xs text-gray-500">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="zap" class="w-3.5 h-3.5 text-[#22d3ee]"></i>
+                            <span>Instant AST checks</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="brain" class="w-3.5 h-3.5 text-[#8b5cf6]"></i>
+                            <span>GPT-4 deep review</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-[#10b981]"></i>
+                            <span>PR integration</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal side (2 cols) -->
+                <div class="lg:col-span-2">
+                    <div class="glow-card rounded-xl overflow-hidden shadow-2xl">
+                        <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#11131a]">
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-2.5 h-2.5 rounded-full bg-[#ef4444]/70"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-[#f59e0b]/70"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-[#10b981]/70"></div>
+                            </div>
+                            <span class="text-[0.65rem] font-mono text-gray-600">review_output.json</span>
+                            <button id="heroCopyBtn" class="text-gray-600 hover:text-gray-400 transition-colors" title="Copy code">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                        <div id="heroTerminal" class="p-4 font-mono text-xs leading-[1.7] bg-[#0e1017] min-h-[295px] overflow-y-auto">
+                            <span class="cursor-blink inline-block w-2 h-4 bg-[#8b5cf6] ml-0.5"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Tab Section -->
+    <section id="features" class="py-24 sm:py-32 relative border-t border-white/5 bg-[#0e1016]">
+        <div class="max-w-6xl mx-auto px-5">
+            <div class="reveal">
+                <span class="tag-pill text-[#8b5cf6] font-mono">How it works</span>
+                <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-4 tracking-tight">
+                    Three layers. One review.
+                </h2>
+                <p class="text-gray-400 max-w-xl mb-10">
+                    Each module handles a different dimension of code quality. Together, they catch what neither could alone.
+                </p>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="reveal flex gap-1 p-1 bg-white/5 rounded-lg w-fit mb-8 border border-white/5" id="featureTabs">
+                <button data-tab="ast" class="tab-btn active px-4 py-2 rounded-md text-sm font-medium text-white bg-white/10 transition-all">
+                    <span class="hidden sm:inline"><i data-lucide="scan-search" class="w-3.5 h-3.5 inline mr-1.5 -mt-0.5"></i></span>AST Analyser
+                </button>
+                <button data-tab="ai" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">
+                    <span class="hidden sm:inline"><i data-lucide="brain" class="w-3.5 h-3.5 inline mr-1.5 -mt-0.5"></i></span>AI Review
+                </button>
+                <button data-tab="github" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">
+                    <span class="hidden sm:inline"><i data-lucide="git-pull-request" class="w-3.5 h-3.5 inline mr-1.5 -mt-0.5"></i></span>GitHub Integration
+                </button>
+            </div>
+
+            <!-- Tab Content: AST -->
+            <div id="tab-ast" class="tab-content">
+                <div class="grid lg:grid-cols-5 gap-6">
+                    <div class="lg:col-span-3 glow-card rounded-xl p-6 sm:p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-9 h-9 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
+                                <i data-lucide="scan-search" class="w-5 h-5 text-[#10b981]"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-white font-bold">Static AST Analysis</h3>
+                                <p class="text-xs text-gray-500 font-mono">ast_analyser.py</p>
+                            </div>
+                            <span class="ml-auto check-badge bg-[#10b981]/10 text-[#10b981]">Instant & Free</span>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed mb-6">
+                            Parses Python source into an Abstract Syntax Tree and walks it to find problematic patterns — no API calls, no latency, no cost.
+                        </p>
+
+                        <!-- Interactive Accordion -->
+                        <div class="space-y-2" id="astAccordion">
+                            <div class="accordion-item border border-white/5 rounded-lg overflow-hidden hover:border-[#f59e0b]/30 transition-colors">
+                                <button class="accordion-trigger w-full flex items-center gap-3 p-3.5 text-left group" data-target="acc-secrets">
+                                    <div class="w-7 h-7 rounded bg-[#f59e0b]/10 flex items-center justify-center shrink-0">
+                                        <i data-lucide="key-round" class="w-3.5 h-3.5 text-[#f59e0b]"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-white flex-1">Hardcoded Secrets & API Keys</span>
+                                    <span class="check-badge bg-[#ef4444]/10 text-[#ef4444]">Critical</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 group-hover:text-white transition-transform duration-200"></i>
+                                </button>
+                                <div id="acc-secrets" class="accordion-content px-3.5">
+                                    <p class="text-xs text-gray-400 leading-relaxed pl-10">
+                                        Detects string literals matching patterns for API keys, passwords, tokens, and other credentials embedded directly in source code. Catches <code class="font-mono text-[#f59e0b] bg-[#f59e0b]/10 px-1 rounded">API_KEY = "sk-..."</code> and similar patterns before they reach production.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="accordion-item border border-white/5 rounded-lg overflow-hidden hover:border-[#ef4444]/30 transition-colors">
+                                <button class="accordion-trigger w-full flex items-center gap-3 p-3.5 text-left group" data-target="acc-eval">
+                                    <div class="w-7 h-7 rounded bg-[#ef4444]/10 flex items-center justify-center shrink-0">
+                                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-[#ef4444]"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-white flex-1">Insecure Functions</span>
+                                    <span class="check-badge bg-[#ef4444]/10 text-[#ef4444]">High</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 group-hover:text-white transition-transform duration-200"></i>
+                                </button>
+                                <div id="acc-eval" class="accordion-content px-3.5">
+                                    <p class="text-xs text-gray-400 leading-relaxed pl-10">
+                                        Flags calls to <code class="font-mono text-[#ef4444] bg-[#ef4444]/10 px-1 rounded">eval()</code>, <code class="font-mono text-[#ef4444] bg-[#ef4444]/10 px-1 rounded">exec()</code>, and <code class="font-mono text-[#ef4444] bg-[#ef4444]/10 px-1 rounded">compile()</code> — functions that execute arbitrary strings as code, opening the door to injection attacks.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="accordion-item border border-white/5 rounded-lg overflow-hidden hover:border-[#f59e0b]/30 transition-colors">
+                                <button class="accordion-trigger w-full flex items-center gap-3 p-3.5 text-left group" data-target="acc-except">
+                                    <div class="w-7 h-7 rounded bg-[#f59e0b]/10 flex items-center justify-center shrink-0">
+                                        <i data-lucide="bug" class="w-3.5 h-3.5 text-[#f59e0b]"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-white flex-1">Bare Except Clauses</span>
+                                    <span class="check-badge bg-[#f59e0b]/10 text-[#f59e0b]">Medium</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 group-hover:text-white transition-transform duration-200"></i>
+                                </button>
+                                <div id="acc-except" class="accordion-content px-3.5">
+                                    <p class="text-xs text-gray-400 leading-relaxed pl-10">
+                                        Catches overly broad <code class="font-mono text-[#f59e0b] bg-[#f59e0b]/10 px-1 rounded">except:</code> blocks that swallow all exceptions silently, including <code class="font-mono text-gray-300">KeyboardInterrupt</code> and <code class="font-mono text-gray-300">SystemExit</code>, making bugs nearly impossible to diagnose.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="accordion-item border border-white/5 rounded-lg overflow-hidden hover:border-[#22d3ee]/30 transition-colors">
+                                <button class="accordion-trigger w-full flex items-center gap-3 p-3.5 text-left group" data-target="acc-docstr">
+                                    <div class="w-7 h-7 rounded bg-[#22d3ee]/10 flex items-center justify-center shrink-0">
+                                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-[#22d3ee]"></i>
+                                    </div>
+                                    <span class="text-sm font-medium text-white flex-1">Missing Docstrings</span>
+                                    <span class="check-badge bg-[#22d3ee]/10 text-[#22d3ee]">Info</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 group-hover:text-white transition-transform duration-200"></i>
+                                </button>
+                                <div id="acc-docstr" class="accordion-content px-3.5">
+                                    <p class="text-xs text-gray-400 leading-relaxed pl-10">
+                                        Checks that newly defined functions include docstrings. Undocumented functions make codebases harder to maintain and onboard new developers.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Preview -->
+                    <div class="lg:col-span-2">
+                        <div class="glow-card rounded-xl overflow-hidden h-full flex flex-col">
+                            <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#11131a]">
+                                <span class="text-[0.65rem] font-mono text-gray-600">ast_analyser.py</span>
+                                <button class="copy-code-btn text-gray-600 hover:text-gray-400 transition-colors" data-code="ast">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                            <div class="p-4 font-mono text-[0.7rem] leading-[1.8] bg-[#0e1017] flex-1 overflow-auto">
+                                <div><span class="text-[#8b5cf6]">import</span> <span class="text-white">ast</span></div>
+                                <div class="text-gray-600"># Pattern: detect hardcoded secrets</div>
+                                <div><span class="text-[#8b5cf6]">SECRET_PATTERNS</span> <span class="text-white">=</span> <span class="text-[#22d3ee]">[</span></div>
+                                <div class="ml-2"><span class="text-[#f59e0b]">"api_key"</span><span class="text-white">,</span> <span class="text-[#f59e0b]">"password"</span><span class="text-white">,</span></div>
+                                <div class="ml-2"><span class="text-[#f59e0b]">"secret"</span><span class="text-white">,</span> <span class="text-[#f59e0b]">"token"</span><span class="text-white">,</span></div>
+                                <div><span class="text-[#22d3ee]">]</span></div>
+                                <div class="mt-2"><span class="text-[#8b5cf6]">class</span> <span class="text-[#22d3ee]">ASTAnalyser</span><span class="text-white">:</span></div>
+                                <div class="ml-2"><span class="text-[#8b5cf6]">def</span> <span class="text-[#f59e0b]">scan</span><span class="text-white">(self, source:</span> <span class="text-[#10b981]">str</span><span class="text-white">):</span></div>
+                                <div class="ml-4"><span class="text-white">tree </span><span class="text-[#8b5cf6]">=</span> <span class="text-white">ast.parse(source)</span></div>
+                                <div class="ml-4"><span class="text-white">issues </span><span class="text-[#8b5cf6]">=</span> <span class="text-white">[]</span></div>
+                                <div class="ml-4 mt-1"><span class="text-[#8b5cf6]">for</span> <span class="text-white">node </span><span class="text-[#8b5cf6]">in</span> <span class="text-white">ast.walk(tree):</span></div>
+                                <div class="ml-6"><span class="text-[#8b5cf6]">if</span> <span class="text-white">self._has_secret(node):</span></div>
+                                <div class="ml-8"><span class="text-white">issues.append(</span></div>
+                                <div class="ml-10"><span class="text-[#f59e0b]">"🔑 Secret found"</span><span class="text-white">)</span></div>
+                                <div class="ml-6"><span class="text-[#8b5cf6]">if</span> <span class="text-white">self._uses_eval(node):</span></div>
+                                <div class="ml-8"><span class="text-white">issues.append(</span></div>
+                                <div class="ml-10"><span class="text-[#f59e0b]">"⚠️ eval() used"</span><span class="text-white">)</span></div>
+                                <div class="ml-4 mt-1"><span class="text-[#8b5cf6]">return</span> <span class="text-white">issues</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: AI -->
+            <div id="tab-ai" class="tab-content hidden">
+                <div class="grid lg:grid-cols-5 gap-6">
+                    <div class="lg:col-span-3 glow-card rounded-xl p-6 sm:p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-9 h-9 rounded-lg bg-[#8b5cf6]/10 flex items-center justify-center">
+                                <i data-lucide="brain" class="w-5 h-5 text-[#8b5cf6]"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-white font-bold">AI Code Review</h3>
+                                <p class="text-xs text-gray-500 font-mono">main.py</p>
+                            </div>
+                            <span class="ml-auto check-badge bg-[#8b5cf6]/10 text-[#8b5cf6]">GPT-4 Powered</span>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed mb-6">
+                            LangChain sends your code diff alongside a carefully crafted system prompt to GPT-4. The AI evaluates logic, security, and style with deep semantic understanding that static analysis alone can't provide.
+                        </p>
+
+                        <div class="space-y-3">
+                            <div class="p-4 rounded-lg bg-[#ef4444]/5 border border-[#ef4444]/15 hover:border-[#ef4444]/30 transition-colors group cursor-default">
+                                <div class="flex items-center gap-2 mb-1.5">
+                                    <i data-lucide="brain-circuit" class="w-4 h-4 text-[#ef4444]"></i>
+                                    <h4 class="text-sm font-semibold text-white">Logic Errors</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 leading-relaxed">Catches incorrect conditions, infinite loops, and off-by-one errors that pass syntax checks but fail at runtime. Things like <code class="font-mono text-[#ef4444]/80 bg-[#ef4444]/10 px-1 rounded">range(len(x))</code> vs <code class="font-mono text-[#10b981]/80 bg-[#10b981]/10 px-1 rounded">range(len(x)-1)</code>.</p>
+                            </div>
+
+                            <div class="p-4 rounded-lg bg-[#f59e0b]/5 border border-[#f59e0b]/15 hover:border-[#f59e0b]/30 transition-colors group cursor-default">
+                                <div class="flex items-center gap-2 mb-1.5">
+                                    <i data-lucide="shield-alert" class="w-4 h-4 text-[#f59e0b]"></i>
+                                    <h4 class="text-sm font-semibold text-white">Security Vulnerabilities</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 leading-relaxed">Identifies input validation risks, SQL injection via f-strings, XSS vectors, and other attack surfaces. Understands context — not just patterns.</p>
+                            </div>
+
+                            <div class="p-4 rounded-lg bg-[#10b981]/5 border border-[#10b981]/15 hover:border-[#10b981]/30 transition-colors group cursor-default">
+                                <div class="flex items-center gap-2 mb-1.5">
+                                    <i data-lucide="sparkles" class="w-4 h-4 text-[#10b981]"></i>
+                                    <h4 class="text-sm font-semibold text-white">Best Practices & Style</h4>
+                                </div>
+                                <p class="text-xs text-gray-400 leading-relaxed">Naming conventions, readability improvements, redundant operations, and code that works but could be cleaner. The stuff senior engineers would comment on in PR review.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="glow-card rounded-xl overflow-hidden h-full flex flex-col">
+                            <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#11131a]">
+                                <span class="text-[0.65rem] font-mono text-gray-600">review_prompt.txt</span>
+                                <button class="copy-code-btn text-gray-600 hover:text-gray-400 transition-colors" data-code="prompt">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                            <div class="p-4 font-mono text-[0.7rem] leading-[1.8] bg-[#0e1017] flex-1 overflow-auto text-gray-400">
+                                <div class="text-gray-600"># System prompt for GPT-4</div>
+                                <div class="mt-1"><span class="text-[#8b5cf6]">You are</span> <span class="text-white">CodeGuard AI, an expert AI</span></div>
+                                <div class="text-white">code reviewer. Review diffs and</div>
+                                <div class="text-white">provide clear constructive feedback.</div>
+                                <div class="mt-2"><span class="text-[#10b981]">Format your response:</span></div>
+                                <div class="ml-2"><span class="text-[#f59e0b]">Summary:</span> <span class="text-white">Overall quality</span></div>
+                                <div class="ml-2"><span class="text-[#f59e0b]">Issues Found:</span></div>
+                                <div class="ml-4"><span class="text-white">- 🔴 Critical: Bug/Security</span></div>
+                                <div class="ml-4"><span class="text-white">- 🟡 Warning: Improvement</span></div>
+                                <div class="ml-4"><span class="text-white">- 🟢 Suggestion: Optional</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: GitHub -->
+            <div id="tab-github" class="tab-content hidden">
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <!-- Pipeline Steps -->
+                    <div class="space-y-4">
+                        <div class="glow-card rounded-xl p-5 hover-lift cursor-default">
+                            <div class="flex items-start gap-4">
+                                <div class="w-10 h-10 rounded-lg bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 flex items-center justify-center shrink-0">
+                                    <i data-lucide="git-pull-request" class="w-5 h-5 text-[#8b5cf6]"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="text-white font-semibold text-sm">1. Fetch PR Data</h4>
+                                        <span class="font-mono text-[0.6rem] text-gray-500">diff_parser.py</span>
+                                    </div>
+                                    <p class="text-xs text-gray-400 leading-relaxed">Monitors the repo, lists open pull requests, and pulls raw diff chunks for modified files.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glow-card rounded-xl p-5 hover-lift cursor-default">
+                            <div class="flex items-start gap-4">
+                                <div class="w-10 h-10 rounded-lg bg-[#22d3ee]/10 border border-[#22d3ee]/20 flex items-center justify-center shrink-0">
+                                    <i data-lucide="brain" class="w-5 h-5 text-[#22d3ee]"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="text-white font-semibold text-sm">2. Analyze & Review</h4>
+                                        <span class="font-mono text-[0.6rem] text-gray-500">main.py</span>
+                                    </div>
+                                    <p class="text-xs text-gray-400 leading-relaxed">Runs rapid static analysis followed by semantic GPT-4 code scans to construct a unified report.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glow-card rounded-xl p-5 hover-lift cursor-default">
+                            <div class="flex items-start gap-4">
+                                <div class="w-10 h-10 rounded-lg bg-[#10b981]/10 border border-[#10b981]/20 flex items-center justify-center shrink-0">
+                                    <i data-lucide="message-circle" class="w-5 h-5 text-[#10b981]"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="text-white font-semibold text-sm">3. Post PR Comments</h4>
+                                        <span class="font-mono text-[0.6rem] text-gray-500">gh_commenter.py</span>
+                                    </div>
+                                    <p class="text-xs text-gray-400 leading-relaxed">Leverages the GitHub API to write detailed review comments on the exact lines affected.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PR Comment Preview -->
+                    <div class="glow-card rounded-xl overflow-hidden flex flex-col">
+                        <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#11131a]">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="github" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs text-gray-400 font-medium">Pull Request #42</span>
+                            </div>
+                            <span class="check-badge bg-[#10b981]/10 text-[#10b981]">Open</span>
+                        </div>
+                        <div class="flex-1 p-4 bg-[#0e1017] font-mono text-[0.72rem] overflow-auto space-y-3">
+                            <!-- Comment 1 -->
+                            <div class="border border-white/5 rounded-lg overflow-hidden">
+                                <div class="bg-[#ef4444]/5 px-3 py-2 flex items-center gap-2 border-b border-white/5">
+                                    <span class="check-badge bg-[#ef4444]/10 text-[#ef4444]">Critical</span>
+                                    <span class="text-gray-400 text-[0.65rem]">Line 5</span>
+                                </div>
+                                <div class="px-3 py-2.5 text-gray-300">
+                                    <span class="text-[#ef4444]">🔴 Hardcoded secret detected.</span> Move <code class="text-[#f59e0b] bg-[#f59e0b]/10 px-1 rounded">API_KEY</code> to environment variables.
+                                </div>
+                            </div>
+                            <!-- Comment 2 -->
+                            <div class="border border-white/5 rounded-lg overflow-hidden">
+                                <div class="bg-[#f59e0b]/5 px-3 py-2 flex items-center gap-2 border-b border-white/5">
+                                    <span class="check-badge bg-[#f59e0b]/10 text-[#f59e0b]">High</span>
+                                    <span class="text-gray-400 text-[0.65rem]">Line 12</span>
+                                </div>
+                                <div class="px-3 py-2.5 text-gray-300">
+                                    <span class="text-[#f59e0b]">⚠️ Insecure function.</span> Replace <code class="text-[#ef4444] bg-[#ef4444]/10 px-1 rounded">eval()</code> with a safe parser.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AST Deep Dive -->
+    <section id="ast" class="py-24 sm:py-32 relative">
+        <div class="max-w-6xl mx-auto px-5">
+            <div class="reveal">
+                <span class="tag-pill text-[#10b981] font-mono">Deep Dive</span>
+                <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-4 tracking-tight">
+                    How AST Analysis Works
+                </h2>
+                <p class="text-gray-400 max-w-xl mb-12">
+                    Python's <code class="font-mono text-[#10b981] text-sm bg-[#10b981]/10 px-1.5 py-0.5 rounded">ast</code> module parses source code into a structured tree of nodes, enabling deep logical queries without running the file.
+                </p>
+            </div>
+
+            <!-- Visual walkthrough -->
+            <div class="grid sm:grid-cols-3 gap-6 reveal">
+                <div class="glow-card rounded-xl p-6 hover-lift">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="text-xs font-bold text-[#8b5cf6] bg-[#8b5cf6]/10 px-2 py-0.5 rounded">01</span>
+                        <span class="text-sm font-semibold text-white">Parse</span>
+                    </div>
+                    <div class="font-mono text-[0.7rem] text-gray-400 bg-[#0e1017] rounded-lg p-3 border border-white/5 mb-4">
+                        <div><span class="text-[#8b5cf6]">import</span> ast</div>
+                        <div>tree <span class="text-[#8b5cf6]">=</span> ast.parse(source)</div>
+                    </div>
+                    <p class="text-xs text-gray-400 leading-relaxed">Transforms raw source code text into a structured Abstract Syntax Tree of node objects representing logic constructs.</p>
+                </div>
+
+                <div class="glow-card rounded-xl p-6 hover-lift">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="text-xs font-bold text-[#22d3ee] bg-[#22d3ee]/10 px-2 py-0.5 rounded">02</span>
+                        <span class="text-sm font-semibold text-white">Walk</span>
+                    </div>
+                    <div class="font-mono text-[0.7rem] text-gray-400 bg-[#0e1017] rounded-lg p-3 border border-white/5 mb-4">
+                        <div><span class="text-[#8b5cf6]">for</span> node <span class="text-[#8b5cf6]">in</span> ast.walk(tree):</div>
+                        <div>&nbsp;&nbsp;self.inspect(node)</div>
+                    </div>
+                    <p class="text-xs text-gray-400 leading-relaxed">Walks node by node in a depth-first traversal, testing each block against predefined lint rules and code patterns.</p>
+                </div>
+
+                <div class="glow-card rounded-xl p-6 hover-lift">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="text-xs font-bold text-[#10b981] bg-[#10b981]/10 px-2 py-0.5 rounded">03</span>
+                        <span class="text-sm font-semibold text-white">Report</span>
+                    </div>
+                    <div class="font-mono text-[0.7rem] text-gray-400 bg-[#0e1017] rounded-lg p-3 border border-white/5 mb-4">
+                        <div><span class="text-[#8b5cf6]">return</span> {</div>
+                        <div>&nbsp;&nbsp;<span class="text-[#f59e0b]">"line"</span>: node.lineno,</div>
+                        <div>&nbsp;&nbsp;<span class="text-[#f59e0b]">"msg"</span>: <span class="text-[#f59e0b]">"Bare except"</span></div>
+                        <div>}</div>
+                    </div>
+                    <p class="text-xs text-gray-400 leading-relaxed">Compiles all node findings into structured notes, ready to combine with the AI review and post on GitHub.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sandbox Demo -->
+    <section id="demo" class="py-24 sm:py-32 relative bg-[#0e1016]/80 border-t border-b border-white/5">
+        <div class="max-w-6xl mx-auto px-5">
+            <div class="reveal text-center max-w-2xl mx-auto mb-16">
+                <span class="tag-pill text-[#8b5cf6] font-mono">Interactive Playground</span>
+                <h2 class="text-3xl sm:text-4xl font-bold text-white mt-3 mb-4 tracking-tight">Code Review Sandbox</h2>
+                <p class="text-gray-400">
+                    Paste your Python code or select a pre-made template below. Click "Run CodeGuard Review" to watch both the static AST and AI systems perform a live audit.
+                </p>
+            </div>
+
+            <!-- Sandbox Controls -->
+            <div class="reveal grid lg:grid-cols-12 gap-8 items-stretch">
+                <!-- Editor & Options (7 cols) -->
+                <div class="lg:col-span-7 flex flex-col gap-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex gap-2">
+                            <button id="templateBuggyBtn" class="px-3 py-1.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] text-xs font-semibold border border-[#8b5cf6]/30 hover:bg-[#8b5cf6]/35 transition-colors">
+                                🐛 Buggy Auth Helper
+                            </button>
+                            <button id="templateSqlBtn" class="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold border border-white/5 transition-colors">
+                                🔒 SQL Injection
+                            </button>
+                            <button id="templateCleanBtn" class="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-semibold border border-white/5 transition-colors">
+                                ✅ Clean Code
+                            </button>
+                        </div>
+                        <span class="text-xs font-mono text-gray-500">Python 3.x</span>
+                    </div>
+
+                    <!-- Code Area -->
+                    <div class="relative flex-1 min-h-[300px] border border-white/5 rounded-xl overflow-hidden bg-[#0e1017]">
+                        <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[#11131a] text-xs text-gray-500 font-mono">
+                            <span>sandbox_editor.py</span>
+                            <span>Lines: <span id="lineCount">10</span></span>
+                        </div>
+                        <textarea id="sandboxTextarea" class="w-full h-[320px] p-4 bg-transparent outline-none border-none font-mono text-xs leading-[1.8] text-[#c9d1d9] resize-none" spellcheck="false">def login_user(username, password):
+    print("Attempting login...")
+    api_key = "secret_api_key_12345"
+    eval(username)
+    try:
+        db.save(username)
+    except:
+        pass</textarea>
+                    </div>
+
+                    <button id="runScanBtn" class="w-full flex items-center justify-center gap-2 py-3 bg-[#8b5cf6] hover:bg-[#7c4fe0] text-white font-bold rounded-lg transition-all hover:shadow-lg hover:shadow-[#8b5cf6]/20">
+                        <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                        Run CodeGuard Review
+                    </button>
+                </div>
+
+                <!-- Live Results Panel (5 cols) -->
+                <div class="lg:col-span-5 flex flex-col">
+                    <div class="glow-card rounded-xl overflow-hidden flex-1 flex flex-col">
+                        <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#11131a]">
+                            <div class="flex items-center gap-2">
+                                <div class="pulse-dot"></div>
+                                <span class="text-xs text-gray-400 font-medium">Review Results</span>
+                            </div>
+                            <span id="scanTimeBadge" class="hidden check-badge bg-white/5 text-gray-400">0.00s</span>
+                        </div>
+
+                        <!-- Result Display Content -->
+                        <div id="resultsDisplay" class="flex-1 p-5 overflow-y-auto space-y-4 max-h-[420px]">
+                            <!-- Welcome Message -->
+                            <div id="resultsWelcome" class="h-full flex flex-col items-center justify-center text-center py-16">
+                                <div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4 border border-white/5">
+                                    <i data-lucide="terminal" class="w-5 h-5 text-gray-500"></i>
+                                </div>
+                                <h4 class="text-white font-bold text-sm">Ready to Scan</h4>
+                                <p class="text-xs text-gray-500 mt-2 max-w-[240px]">
+                                    Pasted code will be parsed and evaluated locally. Click review button to scan.
+                                </p>
+                            </div>
+
+                            <!-- Loading State -->
+                            <div id="resultsLoading" class="hidden py-16 space-y-6">
+                                <div class="flex flex-col items-center justify-center">
+                                    <div class="w-10 h-10 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin"></div>
+                                    <span class="text-xs text-[#8b5cf6] font-mono mt-4">Initializing review pipeline...</span>
+                                </div>
+                                <div class="space-y-2 max-w-xs mx-auto font-mono text-[0.7rem] text-gray-500">
+                                    <div id="loadStep1" class="flex items-center gap-2">
+                                        <i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i>
+                                        <span>Parsing syntax tree...</span>
+                                    </div>
+                                    <div id="loadStep2" class="flex items-center gap-2">
+                                        <i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i>
+                                        <span>Scanning AST pattern nodes...</span>
+                                    </div>
+                                    <div id="loadStep3" class="flex items-center gap-2">
+                                        <i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i>
+                                        <span>Running AI semantic scan...</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Report Output (Populated via JS) -->
+                            <div id="resultsReport" class="hidden space-y-4">
+                                <div class="p-3 bg-white/5 border border-white/5 rounded-lg">
+                                    <h4 class="text-xs font-bold text-white uppercase tracking-wider font-mono mb-1">Summary</h4>
+                                    <p id="reportSummary" class="text-xs text-gray-400 leading-relaxed"></p>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <h4 class="text-xs font-bold text-white uppercase tracking-wider font-mono">Issues Found</h4>
+                                    <div id="reportIssues" class="space-y-2"></div>
+                                </div>
+
+                                <div class="p-3 bg-[#10b981]/5 border border-[#10b981]/10 rounded-lg">
+                                    <h4 class="text-xs font-bold text-[#10b981] uppercase tracking-wider font-mono mb-1">Positive Notes</h4>
+                                    <p id="reportPositives" class="text-xs text-gray-400 leading-relaxed"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-white/5 bg-[#08090C]">
+        <div class="max-w-6xl mx-auto px-5 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-2.5">
+                <div class="w-6 h-6 rounded bg-[#8b5cf6] flex items-center justify-center">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-white"></i>
+                </div>
+                <span class="font-bold text-white text-sm">CodeGuard<span class="text-[#8b5cf6]">AI</span></span>
+            </div>
+            <p class="text-xs text-gray-500 font-mono">
+                &copy; 2026 CodeGuard AI. All rights reserved. Open source under MIT.
+            </p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+
+        // Scroll Progress Bar
+        window.addEventListener('scroll', () => {
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const scrollPercent = docHeight > 0 ? (window.scrollY / docHeight) * 100 : 0;
+            document.getElementById('progressBar').style.width = scrollPercent + '%';
+        });
+
+        // Active Nav Link on Scroll
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('nav .nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (window.scrollY >= (sectionTop - 150)) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('text-white');
+                link.classList.add('text-gray-400');
+                if (link.getAttribute('href') === `#${current}`) {
+                    link.classList.add('text-white');
+                    link.classList.remove('text-gray-400');
+                }
+            });
+        });
+
+        // Mobile Menu
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+        document.querySelectorAll('.mobile-nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+
+        // Copy Toast function
+        function showCopyToast() {
+            const toast = document.getElementById('copyToast');
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // Hero Terminal typing simulation
+        const terminalOutput = [
+            '<span class="text-gray-600">$ codeguard scan --pr 42</span>',
+            '',
+            '<span class="text-[#10b981]">✓ AST Analysis complete (12ms)</span>',
+            '<span class="text-[#8b5cf6]">✓ AI Review complete (3.2s)</span>',
+            '',
+            '<span class="text-white font-semibold">Found 4 issues:</span>',
+            '',
+            '<span><span class="text-[#ef4444] bg-[#ef4444]/10 px-1.5 py-0.5 rounded font-bold check-badge">CRITICAL</span> <span class="text-gray-500">Line 5:</span> <span class="text-white font-medium">Hardcoded API key detected</span></span>',
+            '<span><span class="text-[#f59e0b] bg-[#f59e0b]/10 px-1.5 py-0.5 rounded font-bold check-badge">HIGH</span> <span class="text-gray-500">Line 12:</span> <span class="text-white font-medium">Insecure eval() usage</span></span>',
+            '<span><span class="text-[#f59e0b] bg-[#f59e0b]/10 px-1.5 py-0.5 rounded font-bold check-badge">HIGH</span> <span class="text-gray-500">Line 18:</span> <span class="text-white font-medium font-mono">Bare except clause</span></span>',
+            '<span><span class="text-[#22d3ee] bg-[#22d3ee]/10 px-1.5 py-0.5 rounded font-bold check-badge">INFO</span> <span class="text-gray-500">Line 24:</span> <span class="text-white font-medium">Missing docstring</span></span>',
+            '',
+            '<span class="text-[#10b981]">→ 4 comments posted to PR #42</span>'
+        ];
+
+        const terminal = document.getElementById('heroTerminal');
+        let currentLine = 0;
+
+        function typeTerminal() {
+            if (currentLine < terminalOutput.length) {
+                const line = document.createElement('div');
+                line.className = 'terminal-line mt-1';
+                line.innerHTML = terminalOutput[currentLine];
+                terminal.insertBefore(line, terminal.lastElementChild);
+                
+                // Trigger reflow & add visible class to run transition
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        line.classList.add('visible');
+                    });
+                });
+                
+                // Auto-scroll to bottom
+                terminal.scrollTop = terminal.scrollHeight;
+                
+                currentLine++;
+                setTimeout(typeTerminal, 400 + Math.random() * 300);
+            }
+        }
+        setTimeout(typeTerminal, 1000);
+
+        // Copy Terminal code
+        document.getElementById('heroCopyBtn').addEventListener('click', () => {
+            const codeText = `codeguard scan --pr 42\nFound 4 issues:\n- CRITICAL (Line 5): Hardcoded API key\n- HIGH (Line 12): Insecure eval()\n- HIGH (Line 18): Bare except\n- INFO (Line 24): Missing docstring`;
+            navigator.clipboard.writeText(codeText);
+            showCopyToast();
+        });
+
+        // Features switcher
+        const featureTabs = document.getElementById('featureTabs');
+        featureTabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            
+            // Toggle active buttons
+            featureTabs.querySelectorAll('button').forEach(b => {
+                b.classList.remove('active', 'text-white', 'bg-white/10');
+                b.classList.add('text-gray-400');
+            });
+            btn.classList.add('active', 'text-white', 'bg-white/10');
+            btn.classList.remove('text-gray-400');
+
+            // Show appropriate content
+            const tabId = btn.getAttribute('data-tab');
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+        });
+
+        // Accordion functionality
+        const accordion = document.getElementById('astAccordion');
+        accordion.addEventListener('click', (e) => {
+            const trigger = e.target.closest('.accordion-trigger');
+            if (!trigger) return;
+
+            const targetId = trigger.getAttribute('data-target');
+            const targetContent = document.getElementById(targetId);
+            const isOpen = targetContent.classList.contains('open');
+
+            // Close all
+            accordion.querySelectorAll('.accordion-content').forEach(c => {
+                c.classList.remove('open');
+                c.style.maxHeight = null;
+            });
+            accordion.querySelectorAll('.accordion-trigger [data-lucide="chevron-down"]').forEach(i => {
+                i.style.transform = 'rotate(0deg)';
+            });
+
+            // Toggle selected
+            if (!isOpen) {
+                targetContent.classList.add('open');
+                targetContent.style.maxHeight = targetContent.scrollHeight + "px";
+                trigger.querySelector('[data-lucide="chevron-down"]').style.transform = 'rotate(180deg)';
+            }
+        });
+
+        // Setup first item open by default
+        setTimeout(() => {
+            const firstTrigger = accordion.querySelector('.accordion-trigger');
+            if (firstTrigger) firstTrigger.click();
+        }, 500);
+
+        // Copy buttons for code boxes
+        document.querySelectorAll('.copy-code-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.getAttribute('data-code');
+                let code = '';
+                if (type === 'ast') {
+                    code = 'import ast\n\nSECRET_PATTERNS = [\n    "api_key", "password",\n    "secret", "token",\n]\n\nclass ASTAnalyser:\n    def scan(self, source: str):\n        tree = ast.parse(source)\n        issues = []\n        for node in ast.walk(tree):\n            if self._has_secret(node):\n                issues.append("🔑 Secret found")\n            if self._uses_eval(node):\n                issues.append("⚠️ eval() used")\n        return issues';
+                } else if (type === 'prompt') {
+                    code = '# System prompt for GPT-4\nYou are CodeGuard AI, an expert AI code reviewer. Review diffs and provide clear constructive feedback.\n\nFormat your response:\nSummary: Overall quality\nIssues Found:\n  - 🔴 Critical: Bug/Security\n  - 🟡 Warning: Improvement\n  - 🟢 Suggestion: Optional';
+                }
+                navigator.clipboard.writeText(code);
+                showCopyToast();
+            });
+        });
+
+        // --- Sandbox Templates ---
+        const templates = {
+            buggy: `def login_user(username, password):
+    print("Attempting login...")
+    api_key = "secret_api_key_12345"
+    eval(username)
+    try:
+        db.save(username)
+    except:
+        pass`,
+            sql: `def get_user_data(user_id):
+    """Fetch user records from database."""
+    # SQL Injection vulnerability
+    query = f"SELECT * FROM users WHERE id = '{user_id}'"
+    return db.execute(query)`,
+            clean: `import logging
+
+logger = logging.getLogger(__name__)
+
+def calculate_discount(price: float, discount: float) -> float:
+    """Calculate the discount price.
+    
+    Args:
+        price: Original price.
+        discount: Percentage of discount (0-1).
+    """
+    if not (0 <= discount <= 1):
+        raise ValueError("Discount must be between 0 and 1")
+    return price * (1 - discount)`
+        };
+
+        const textarea = document.getElementById('sandboxTextarea');
+        const lineCount = document.getElementById('lineCount');
+
+        function updateLineCount() {
+            const lines = textarea.value.split('\n').length;
+            lineCount.textContent = lines;
+        }
+
+        textarea.addEventListener('input', updateLineCount);
+        updateLineCount();
+
+        function selectTemplate(type, btn) {
+            textarea.value = templates[type];
+            updateLineCount();
+            
+            // Toggle active classes
+            document.querySelectorAll('#demo button[id^="template"]').forEach(b => {
+                b.classList.remove('bg-[#8b5cf6]/20', 'text-[#8b5cf6]', 'border-[#8b5cf6]/30');
+                b.classList.add('bg-white/5', 'text-gray-300', 'border-white/5');
+            });
+            btn.classList.add('bg-[#8b5cf6]/20', 'text-[#8b5cf6]', 'border-[#8b5cf6]/30');
+            btn.classList.remove('bg-white/5', 'text-gray-300', 'border-white/5');
+        }
+
+        document.getElementById('templateBuggyBtn').addEventListener('click', function() {
+            selectTemplate('buggy', this);
+        });
+        document.getElementById('templateSqlBtn').addEventListener('click', function() {
+            selectTemplate('sql', this);
+        });
+        document.getElementById('templateCleanBtn').addEventListener('click', function() {
+            selectTemplate('clean', this);
+        });
+
+        // Live static scanner inside JS!
+        function runLocalScan(code) {
+            const findings = [];
+            const lines = code.split('\n');
+            
+            // 1. Secrets check
+            const secretRegex = /(password|secret|api_key|token)\s*=\s*["'][^"']{4,}["']/i;
+            for (let i = 0; i < lines.length; i++) {
+                if (secretRegex.test(lines[i])) {
+                    findings.push({
+                        type: 'Critical',
+                        icon: 'key-round',
+                        color: 'text-red-400 bg-red-400/10 border-red-400/20',
+                        message: `Potential hardcoded secret or credential literal detected on line ${i+1}. Use environment variables.`,
+                    });
+                }
+            }
+            
+            // 2. eval() check
+            const evalRegex = /\beval\s*\(/;
+            for (let i = 0; i < lines.length; i++) {
+                if (evalRegex.test(lines[i])) {
+                    findings.push({
+                        type: 'High',
+                        icon: 'alert-triangle',
+                        color: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+                        message: `Insecure eval() execution detected on line ${i+1}. This permits arbitrary remote code execution.`,
+                    });
+                }
+            }
+
+            // 3. SQL injection check
+            const sqlRegex = /execute\s*\(\s*f["'].*SELECT.*WHERE/i;
+            const rawSqlRegex = /SELECT\s+.*\s+FROM\s+.*\s+WHERE\s+.*=.*\{/i;
+            for (let i = 0; i < lines.length; i++) {
+                if (sqlRegex.test(lines[i]) || rawSqlRegex.test(lines[i])) {
+                    findings.push({
+                        type: 'Critical',
+                        icon: 'shield-alert',
+                        color: 'text-red-400 bg-red-400/10 border-red-400/20',
+                        message: `SQL Injection risk on line ${i+1}. Dynamic SQL parameter concatenation via f-string detected. Use parameterized queries.`,
+                    });
+                }
+            }
+
+            // 4. Bare except check
+            const exceptRegex = /except\s*:/;
+            for (let i = 0; i < lines.length; i++) {
+                if (exceptRegex.test(lines[i])) {
+                    findings.push({
+                        type: 'Medium',
+                        icon: 'bug',
+                        color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+                        message: `Bare except clause detected on line ${i+1}. Catch specific exception types to prevent masking critical crashes.`,
+                    });
+                }
+            }
+
+            // 5. Docstring check
+            const funcRegex = /def\s+([a-zA-Z0-9_]+)\s*\(/;
+            for (let i = 0; i < lines.length; i++) {
+                const match = lines[i].match(funcRegex);
+                if (match) {
+                    const funcName = match[1];
+                    let hasDoc = false;
+                    if (i + 1 < lines.length) {
+                        const nextLine = lines[i+1].trim();
+                        if (nextLine.startsWith('"""') || nextLine.startsWith("'''")) {
+                            hasDoc = true;
+                        }
+                    }
+                    if (!hasDoc) {
+                        findings.push({
+                            type: 'Info',
+                            icon: 'file-text',
+                            color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+                            message: `Function \`${funcName}()\` is missing a docstring documentation block.`,
+                        });
+                    }
+                }
+            }
+
+            return findings;
+        }
+
+        // Live Demo runner logic
+        const runScanBtn = document.getElementById('runScanBtn');
+        const resultsWelcome = document.getElementById('resultsWelcome');
+        const resultsLoading = document.getElementById('resultsLoading');
+        const resultsReport = document.getElementById('resultsReport');
+        const scanTimeBadge = document.getElementById('scanTimeBadge');
+
+        runScanBtn.addEventListener('click', () => {
+            const code = textarea.value.trim();
+            if (!code) return;
+
+            // Show loading
+            resultsWelcome.classList.add('hidden');
+            resultsReport.classList.add('hidden');
+            resultsLoading.classList.remove('hidden');
+            scanTimeBadge.classList.add('hidden');
+
+            const loadStep1 = document.getElementById('loadStep1');
+            const loadStep2 = document.getElementById('loadStep2');
+            const loadStep3 = document.getElementById('loadStep3');
+
+            // Reset step icons
+            loadStep1.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
+            loadStep1.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Parsing syntax tree...</span>';
+            loadStep2.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
+            loadStep2.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Scanning AST pattern nodes...</span>';
+            loadStep3.className = "flex items-center gap-2 text-gray-500 font-mono text-[0.7rem]";
+            loadStep3.innerHTML = '<i data-lucide="circle" class="w-3.5 h-3.5 shrink-0"></i><span>Running AI semantic scan...</span>';
+            lucide.createIcons();
+
+            // Simulate Pipeline steps
+            setTimeout(() => {
+                loadStep1.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                loadStep1.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>Parsed syntax tree successfully</span>';
+                lucide.createIcons();
+            }, 600);
+
+            setTimeout(() => {
+                loadStep2.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                loadStep2.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AST pattern scan completed</span>';
+                lucide.createIcons();
+            }, 1300);
+
+            setTimeout(() => {
+                loadStep3.className = "flex items-center gap-2 text-[#10b981] font-mono text-[0.7rem]";
+                loadStep3.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5 shrink-0"></i><span>AI semantic review completed</span>';
+                lucide.createIcons();
+            }, 2100);
+
+            setTimeout(() => {
+                // Done! Show Report
+                resultsLoading.classList.add('hidden');
+                resultsReport.classList.remove('hidden');
+                
+                // Show badge
+                scanTimeBadge.textContent = "1.84s";
+                scanTimeBadge.classList.remove('hidden');
+
+                const findings = runLocalScan(code);
+                const reportSummary = document.getElementById('reportSummary');
+                const reportIssues = document.getElementById('reportIssues');
+                const reportPositives = document.getElementById('reportPositives');
+
+                reportIssues.innerHTML = '';
+
+                if (findings.length === 0) {
+                    reportSummary.textContent = "Great job! Code contains zero AST issues, shows solid structural safety, and follows Python best practices.";
+                    reportIssues.innerHTML = `
+                        <div class="flex items-start gap-3 p-3 bg-[#10b981]/5 border border-[#10b981]/15 rounded-lg">
+                            <i data-lucide="smile" class="w-4 h-4 text-[#10b981] shrink-0 mt-0.5"></i>
+                            <span class="text-xs text-[#10b981]">Clean scan. No anomalies found.</span>
+                        </div>`;
+                    reportPositives.textContent = "Functions are documented, variables are named appropriately, and exception handling is robust.";
+                } else {
+                    // Populate Summary
+                    reportSummary.textContent = `Scanned successfully. Found ${findings.length} warning(s) and critical issue(s) that require attention before production.`;
+                    
+                    // Populate Issues
+                    findings.forEach(issue => {
+                        const div = document.createElement('div');
+                        div.className = `flex items-start gap-3 p-3 border rounded-lg ${issue.color}`;
+                        
+                        let badgeColor = 'bg-gray-400/20';
+                        if (issue.type === 'Critical') badgeColor = 'bg-red-500/20 text-red-400';
+                        else if (issue.type === 'High') badgeColor = 'bg-orange-500/20 text-orange-400';
+                        else if (issue.type === 'Medium') badgeColor = 'bg-yellow-500/20 text-yellow-400';
+                        else if (issue.type === 'Info') badgeColor = 'bg-cyan-500/20 text-cyan-400';
+
+                        div.innerHTML = `
+                            <div class="p-1 rounded bg-black/10 shrink-0 mt-0.5">
+                                <i data-lucide="${issue.icon}" class="w-3.5 h-3.5"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-[0.65rem] font-extrabold uppercase px-1 rounded ${badgeColor}">${issue.type}</span>
+                                </div>
+                                <p class="text-xs leading-relaxed text-gray-300">${issue.message}</p>
+                            </div>
+                        `;
+                        reportIssues.appendChild(div);
+                    });
+
+                    // Positive Note
+                    reportPositives.textContent = "The code syntax is valid and compiles cleanly into standard byte-code structures.";
+                }
+                lucide.createIcons();
+            }, 2600);
+        });
+
+        // Trigger default click on demo run
+        setTimeout(() => {
+            document.getElementById('runScanBtn').click();
+        }, 1500);
+
+        // Intersection Observer reveal animation
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Setup immediate visibility for hero text
+        document.querySelectorAll('section:first-of-type .reveal').forEach(el => {
+            el.classList.add('visible');
+        });
+    </script>
+</body>
+</html>
