@@ -2,6 +2,11 @@
 
 An autonomous AI agent that reviews GitHub Pull Requests and posts detailed, inline code review comments — automatically. No human reviewer needed for the first pass.
 
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces/itachii9090/codesense)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/MAYANK-af/codesense)
+
+> 🚀 **Live Interactive Demo & Sandbox**: [https://huggingface.co/spaces/itachii9090/codesense](https://huggingface.co/spaces/itachii9090/codesense)
+
 ---
 
 ## 🎯 What it does
@@ -53,7 +58,7 @@ codesense/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/mayankyadav/codesense.git
+git clone https://github.com/MAYANK-af/codesense.git
 cd codesense
 ```
 
@@ -118,8 +123,9 @@ python -m uvicorn agent.webhook_server:app --host 0.0.0.0 --port 8000
 - Choose the `Pull requests` event.
 - Secure it by setting `GITHUB_WEBHOOK_SECRET` in your `.env` for HMAC signature validation.
 
-### 3. Local Web Dashboard (Sandbox)
-To launch the interactive dashboard and code review sandbox in your browser:
+### 3. Web Dashboard (Live Demo & Local Sandbox)
+- 🌐 **Live Demo (Hugging Face Space)**: [https://huggingface.co/spaces/itachii9090/codesense](https://huggingface.co/spaces/itachii9090/codesense)
+- 💻 **Run Locally**:
 ```bash
 python run_frontend.py
 ```

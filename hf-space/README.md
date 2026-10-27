@@ -19,3 +19,6 @@ This is the interactive landing page and local static AST scanner sandbox for **
 
 ## Deployment
 This static dashboard is served using Hugging Face Static Spaces.
+
+## GitHub Repository
+Source code, GitHub Action, and webhook agent: [https://github.com/MAYANK-af/codesense](https://github.com/MAYANK-af/codesense)
